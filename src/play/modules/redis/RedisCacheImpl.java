@@ -9,6 +9,7 @@ import redis.clients.jedis.exceptions.JedisDataException;
 import java.io.*;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Play cache implementation using Redis.
@@ -21,8 +22,29 @@ public class RedisCacheImpl implements CacheImpl {
 	
 	static JedisPool connectionPool;
     static ThreadLocal<Jedis> cacheConnection = new ThreadLocal<Jedis>();
-	
+
+    // Key prefix isolating tenants that share the same Redis instance.
+    // Empty means no prefixing (legacy behavior).
+    static String keyPrefix = "";
+
     private RedisCacheImpl() {  }
+
+    /**
+     * Configure the key prefix from the "redis.cache.prefix" property.
+     * A missing value or an unresolved ${...} placeholder disables prefixing,
+     * so the module keeps working when the environment variable is not set.
+     */
+    static void configureKeyPrefix(String prefix) {
+        if (prefix == null || prefix.length() == 0 || prefix.startsWith("${")) {
+            keyPrefix = "";
+        } else {
+            keyPrefix = prefix;
+        }
+    }
+
+    private static String k(String key) {
+        return keyPrefix + key;
+    }
 
     static RedisCacheImpl getInstance() {
         return uniqueInstance;
@@ -47,7 +69,7 @@ public class RedisCacheImpl implements CacheImpl {
     
 	@Override
 	public void add(String key, Object value, int expiration) {
-		if (!getCacheConnection().exists(key)) {
+		if (!getCacheConnection().exists(k(key))) {
 			set(key, value, expiration);
 		}		
 	}
@@ -69,8 +91,8 @@ public class RedisCacheImpl implements CacheImpl {
 	    // Serialize to a byte array
 		byte[] bytes = toByteArray(value);
 		
-		jedis.set(key.getBytes(), bytes);
-		jedis.expire(key, expiration);
+		jedis.set(k(key).getBytes(), bytes);
+		jedis.expire(k(key), expiration);
 	}
 
 	private static byte[] toByteArray(Object o) {
@@ -104,7 +126,7 @@ public class RedisCacheImpl implements CacheImpl {
 
 	@Override
 	public void replace(String key, Object value, int expiration) {
-		if (getCacheConnection().exists(key)) {
+		if (getCacheConnection().exists(k(key))) {
 			set(key, value, expiration);
 		}
 	}
@@ -121,7 +143,7 @@ public class RedisCacheImpl implements CacheImpl {
 
 	@Override
 	public Object get(String key) {
-		byte[] bytes = getCacheConnection().get(key.getBytes());
+		byte[] bytes = getCacheConnection().get(k(key).getBytes());
 		if (bytes == null) return null;
 
 		return fromByteArray(bytes);
@@ -165,15 +187,15 @@ public class RedisCacheImpl implements CacheImpl {
 		long sum;
 		if (cacheValue == null) {
 			Long newCacheValueLong = Long.valueOf(0L + by);
-			getCacheConnection().set(key.getBytes(), toByteArray(newCacheValueLong));
+			getCacheConnection().set(k(key).getBytes(), toByteArray(newCacheValueLong));
 			sum = newCacheValueLong.longValue();
 		} else if (cacheValue instanceof Integer) {
 			Integer newCacheValueInteger = (Integer)cacheValue + by;
-			getCacheConnection().set(key.getBytes(), toByteArray(newCacheValueInteger));
+			getCacheConnection().set(k(key).getBytes(), toByteArray(newCacheValueInteger));
 			sum = newCacheValueInteger.longValue();
 		} else if (cacheValue instanceof Long) {
 			Long newCacheValueLong = (Long)cacheValue + by;
-			getCacheConnection().set(key.getBytes(), toByteArray(newCacheValueLong));
+			getCacheConnection().set(k(key).getBytes(), toByteArray(newCacheValueLong));
 			sum = newCacheValueLong.longValue();
 		} else {
 			throw new JedisDataException("Cannot incr on non-integer value (key: " + key + ")");
@@ -188,15 +210,15 @@ public class RedisCacheImpl implements CacheImpl {
 		long difference;
 		if (cacheValue == null) {
 			Long newCacheValueLong = Long.valueOf(0L - by);
-			getCacheConnection().set(key.getBytes(), toByteArray(newCacheValueLong));
+			getCacheConnection().set(k(key).getBytes(), toByteArray(newCacheValueLong));
 			difference = newCacheValueLong.longValue();
 		} else if (cacheValue instanceof Integer) {
 			Integer newCacheValueInteger = (Integer)cacheValue - by;
-			getCacheConnection().set(key.getBytes(), toByteArray(newCacheValueInteger));
+			getCacheConnection().set(k(key).getBytes(), toByteArray(newCacheValueInteger));
 			difference = newCacheValueInteger.longValue();
 		} else if (cacheValue instanceof Long) {
 			Long newCacheValueLong = (Long)cacheValue - by;
-			getCacheConnection().set(key.getBytes(), toByteArray(newCacheValueLong));
+			getCacheConnection().set(k(key).getBytes(), toByteArray(newCacheValueLong));
 			difference = newCacheValueLong.longValue();
 		} else {
 			throw new JedisDataException("Cannot decr on non-integer value (key: " + key + ")");
@@ -207,13 +229,23 @@ public class RedisCacheImpl implements CacheImpl {
 
 	@Override
 	public void clear() {
-		getCacheConnection().flushDB();
-		// TODO: check return status code
+		// Without a prefix, keep the legacy behavior (flush the whole DB).
+		// With a prefix, only delete this tenant's keys so instances sharing
+		// the Redis do not wipe each other's cache. Jedis 2.0.0 has no SCAN,
+		// so KEYS is used: acceptable for a cache-sized keyspace.
+		if (keyPrefix.length() == 0) {
+			getCacheConnection().flushDB();
+		} else {
+			Set<String> keys = getCacheConnection().keys(keyPrefix + "*");
+			if (!keys.isEmpty()) {
+				getCacheConnection().del(keys.toArray(new String[keys.size()]));
+			}
+		}
 	}
 
 	@Override
 	public void delete(String key) {
-		getCacheConnection().del(key);
+		getCacheConnection().del(k(key));
 		// TODO: check return status code
 	}
 
@@ -229,7 +261,9 @@ public class RedisCacheImpl implements CacheImpl {
 
 	@Override
 	public void stop() {
-		getCacheConnection().flushAll();
+		// Do NOT flush on shutdown: the historical flushAll() wiped ALL databases
+		// of the Redis instance on every pod restart, destroying the cache of
+		// every other application sharing that instance.
 		connectionPool.destroy();
 	}
 

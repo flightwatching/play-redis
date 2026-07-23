@@ -1,0 +1,33 @@
+name: Build & Release Redis Module
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+      
+      - name: Download Play 1.7.1
+        run: |
+          curl -L -o play-1.7.1.zip https://github.com/playframework/play1/releases/download/1.7.1/play-1.7.1.zip
+          unzip -q play-1.7.1.zip
+      
+      - name: Build JAR
+        run: ant -Dplay.path=./play-1.7.1
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: lib/play-redis.jar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
