@@ -16,14 +16,24 @@ jobs:
         with:
           java-version: '11'
           distribution: temurin
-      
+
+      # Play 1.7.1's launcher imports the `imp` module, removed in Python 3.12.
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
       - name: Download Play 1.7.1
         run: |
           curl -L -o play-1.7.1.zip https://github.com/playframework/play1/releases/download/1.7.1/play-1.7.1.zip
           unzip -q play-1.7.1.zip
+          chmod a+x play-1.7.1/play
 
       - name: Create lib directory
         run: mkdir -p lib
+
+      - name: Resolve module dependencies (jedis, stringtemplate)
+        run: ./play-1.7.1/play dependencies . --forceCopy
 
       - name: Build JAR
         run: ant -Dplay.path=./play-1.7.1
