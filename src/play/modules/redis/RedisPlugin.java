@@ -41,6 +41,7 @@ public class RedisPlugin extends PlayPlugin {
 	    	    RedisConnectionInfo redisConnInfo = new RedisConnectionInfo(redisCacheUrl, Play.configuration.getProperty("redis.cache.timeout"));
 	    	    
 	    	    RedisCacheImpl.connectionPool = redisConnInfo.getConnectionPool();
+	    	    RedisCacheImpl.configureKeyPrefix(Play.configuration.getProperty("redis.cache.prefix"));
 	    	    Cache.forcedCacheImpl = RedisCacheImpl.getInstance();
 	    	    createdRedisCache = true;
 	    	} else {
