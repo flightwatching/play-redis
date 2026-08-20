@@ -3,8 +3,8 @@ package play.modules.redis;
 import play.Play;
 import play.cache.CacheImpl;
 import redis.clients.jedis.Jedis;
-import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.exceptions.JedisDataException;
+import redis.clients.util.Pool;
 
 import java.io.*;
 import java.util.HashMap;
@@ -20,7 +20,7 @@ public class RedisCacheImpl implements CacheImpl {
 
 	private static RedisCacheImpl uniqueInstance = new RedisCacheImpl();
 	
-	static JedisPool connectionPool;
+	static Pool<Jedis> connectionPool;
     static ThreadLocal<Jedis> cacheConnection = new ThreadLocal<Jedis>();
 
     // Key prefix isolating tenants that share the same Redis instance.

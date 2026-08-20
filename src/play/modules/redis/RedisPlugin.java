@@ -10,12 +10,14 @@ import play.Play;
 import play.PlayPlugin;
 import play.cache.Cache;
 import play.exceptions.ConfigurationException;
+import redis.clients.jedis.Jedis;
 import redis.clients.jedis.JedisPool;
 import redis.clients.jedis.JedisPoolConfig;
 import redis.clients.jedis.JedisShardInfo;
 import redis.clients.jedis.Protocol;
 import redis.clients.jedis.ShardedJedis;
 import redis.clients.jedis.ShardedJedisPool;
+import redis.clients.util.Pool;
 
 
 /**
@@ -39,8 +41,15 @@ public class RedisPlugin extends PlayPlugin {
 	    	    String redisCacheUrl = Play.configuration.getProperty("redis.cache.url");
 	    	    Logger.info("Connecting to redis cache with %s", redisCacheUrl);
 	    	    RedisConnectionInfo redisConnInfo = new RedisConnectionInfo(redisCacheUrl, Play.configuration.getProperty("redis.cache.timeout"));
-	    	    
-	    	    RedisCacheImpl.connectionPool = redisConnInfo.getConnectionPool();
+
+	    	    // Separate property, not parsed out of the URL (see RedisConnectionInfo below); empty/unresolved => pre-ACL behavior, connect as "default".
+	    	    String redisCacheUser = Play.configuration.getProperty("redis.cache.user");
+	    	    if (redisCacheUser != null && redisCacheUser.length() > 0 && !redisCacheUser.startsWith("${")) {
+	    	    	Logger.info("Connecting to redis cache as ACL user %s", redisCacheUser);
+	    	    	RedisCacheImpl.connectionPool = redisConnInfo.getAclConnectionPool(redisCacheUser);
+	    	    } else {
+	    	    	RedisCacheImpl.connectionPool = redisConnInfo.getConnectionPool();
+	    	    }
 	    	    RedisCacheImpl.configureKeyPrefix(Play.configuration.getProperty("redis.cache.prefix"));
 	    	    Cache.forcedCacheImpl = RedisCacheImpl.getInstance();
 	    	    createdRedisCache = true;
@@ -130,10 +139,14 @@ public class RedisPlugin extends PlayPlugin {
     		if (password == null) {
     			return new JedisPool(new JedisPoolConfig(), host, port, timeout);
     		}
-    		
+
     		return new JedisPool(new JedisPoolConfig(), host, port, timeout, password);
     	}
-    	
+
+    	Pool<Jedis> getAclConnectionPool(String username) {
+    		return new AclJedisPool(new JedisPoolConfig(), host, port, timeout, username, password);
+    	}
+
     	JedisShardInfo getShardInfo() {
     		JedisShardInfo si = new JedisShardInfo(host, port, timeout);
     		si.setPassword(password);
