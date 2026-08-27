@@ -69,19 +69,29 @@ public class RedisCacheImpl implements CacheImpl {
     
 	@Override
 	public void add(String key, Object value, int expiration) {
-		if (!getCacheConnection().exists(k(key))) {
-			set(key, value, expiration);
-		}		
+		tryAdd(key, value, expiration);
 	}
 
 	@Override
 	public boolean safeAdd(String key, Object value, int expiration) {
 		try {
-			add(key, value, expiration);
-			return true;
+			return tryAdd(key, value, expiration);
 		} catch (Exception e) {
 			return false;
 		}
+	}
+
+	// Atomic add-if-absent (SETNX then EXPIRE), unlike the former EXISTS+SET
+	// which raced across pods/threads and let two callers both "win" the add.
+	private boolean tryAdd(String key, Object value, int expiration) {
+		Jedis jedis = getCacheConnection();
+		byte[] bytes = toByteArray(value);
+		Long result = jedis.setnx(k(key).getBytes(), bytes);
+		if (result != null && result == 1L) {
+			jedis.expire(k(key).getBytes(), expiration);
+			return true;
+		}
+		return false;
 	}
 
 	@Override
