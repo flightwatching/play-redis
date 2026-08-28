@@ -23,17 +23,12 @@ public class RedisCacheImpl implements CacheImpl {
 	static Pool<Jedis> connectionPool;
     static ThreadLocal<Jedis> cacheConnection = new ThreadLocal<Jedis>();
 
-    // Key prefix isolating tenants that share the same Redis instance.
-    // Empty means no prefixing (legacy behavior).
+    // Key prefix isolating tenants sharing the same Redis instance; empty means no prefixing (legacy behavior).
     static String keyPrefix = "";
 
     private RedisCacheImpl() {  }
 
-    /**
-     * Configure the key prefix from the "redis.cache.prefix" property.
-     * A missing value or an unresolved ${...} placeholder disables prefixing,
-     * so the module keeps working when the environment variable is not set.
-     */
+    /** Configures the key prefix from "redis.cache.prefix"; a missing/unresolved ${...} value disables prefixing. */
     static void configureKeyPrefix(String prefix) {
         if (prefix == null || prefix.length() == 0 || prefix.startsWith("${")) {
             keyPrefix = "";
@@ -81,8 +76,7 @@ public class RedisCacheImpl implements CacheImpl {
 		}
 	}
 
-	// Atomic add-if-absent (SETNX then EXPIRE), unlike the former EXISTS+SET
-	// which raced across pods/threads and let two callers both "win" the add.
+	// Atomic add-if-absent (SETNX then EXPIRE), unlike the former EXISTS+SET which raced across pods/threads.
 	private boolean tryAdd(String key, Object value, int expiration) {
 		Jedis jedis = getCacheConnection();
 		byte[] bytes = toByteArray(value);
@@ -239,10 +233,7 @@ public class RedisCacheImpl implements CacheImpl {
 
 	@Override
 	public void clear() {
-		// Without a prefix, keep the legacy behavior (flush the whole DB).
-		// With a prefix, only delete this tenant's keys so instances sharing
-		// the Redis do not wipe each other's cache. Jedis 2.0.0 has no SCAN,
-		// so KEYS is used: acceptable for a cache-sized keyspace.
+		// No prefix: flush the whole DB (legacy). With a prefix: KEYS+DEL only this tenant's keys (Jedis 2.0.0 has no SCAN).
 		if (keyPrefix.length() == 0) {
 			getCacheConnection().flushDB();
 		} else {
@@ -271,9 +262,7 @@ public class RedisCacheImpl implements CacheImpl {
 
 	@Override
 	public void stop() {
-		// Do NOT flush on shutdown: the historical flushAll() wiped ALL databases
-		// of the Redis instance on every pod restart, destroying the cache of
-		// every other application sharing that instance.
+		// Do NOT flush on shutdown: the historical flushAll() wiped every tenant's cache on each pod restart.
 		connectionPool.destroy();
 	}
 
