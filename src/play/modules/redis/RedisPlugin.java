@@ -33,13 +33,38 @@ public class RedisPlugin extends PlayPlugin {
 	public static boolean isRedisCacheEnabled() {
 		return Play.configuration.getProperty("redis.cache", "disabled").equals("enabled");
 	}
+
+	/**
+	 * Masks the credentials of a redis URL, whose password sits in the userinfo part
+	 * (<code>redis://:secret@host:port</code>).
+	 *
+	 * Logging such a URL verbatim - or echoing it back inside a parse error - writes the password in clear to
+	 * every pod's stdout, and from there into whatever collects those logs. Anything that puts a redis URL in a
+	 * message must go through this first.
+	 *
+	 * Deliberately not URI-based: it must also work on the malformed URLs reported by the parse error in
+	 * RedisConnectionInfo, which are precisely the ones java.net.URI refuses. Everything between the scheme and
+	 * the "@" is dropped, username included: keeping the supposedly harmless half would partly preserve a
+	 * password that happens to contain a ":".
+	 *
+	 * The match is greedy up to the LAST "@", not the first: java.net.URI ends the userinfo there, and so does
+	 * RedisConnectionInfo below, so a password containing an "@" is valid here and a lazy match would leak its
+	 * tail. A redis URL has no path, so there is no later "@" to over-match; and over-redacting a log line is the
+	 * harmless failure, printing a password is not.
+	 */
+	static String redactUrl(String redisUrl) {
+		if (redisUrl == null) {
+			return null;
+		}
+		return redisUrl.replaceFirst("^([a-zA-Z][a-zA-Z0-9+.-]*://).*@", "$1***@");
+	}
 	
 	@Override
 	public void onConfigurationRead() {
 		if (isRedisCacheEnabled()) {
 	    	if (Play.configuration.containsKey("redis.cache.url")) {
 	    	    String redisCacheUrl = Play.configuration.getProperty("redis.cache.url");
-	    	    Logger.info("Connecting to redis cache with %s", redisCacheUrl);
+	    	    Logger.info("Connecting to redis cache with %s", redactUrl(redisCacheUrl));
 	    	    RedisConnectionInfo redisConnInfo = new RedisConnectionInfo(redisCacheUrl, Play.configuration.getProperty("redis.cache.timeout"));
 
 	    	    // Separate property, not parsed out of the URL (see RedisConnectionInfo below); empty/unresolved => pre-ACL behavior, connect as "default".
@@ -63,7 +88,7 @@ public class RedisPlugin extends PlayPlugin {
 	public void onApplicationStart() {
     	if (Play.configuration.containsKey("redis.url")) {
     	    String redisUrl = Play.configuration.getProperty("redis.url");
-    	    Logger.info("Connecting to redis with %s", redisUrl);
+    	    Logger.info("Connecting to redis with %s", redactUrl(redisUrl));
     	    RedisConnectionInfo redisConnInfo = new RedisConnectionInfo(redisUrl, Play.configuration.getProperty("redis.timeout"));
     	    
         	RedisConnectionManager.connectionPool = redisConnInfo.getConnectionPool();
@@ -109,7 +134,7 @@ public class RedisPlugin extends PlayPlugin {
     		try {
     	        redisUri = new URI(redisUrl);
     	    } catch (URISyntaxException e) {
-    	        throw new ConfigurationException("Bad configuration for redis: unable to parse redis url (" + redisUrl + ")");
+    	        throw new ConfigurationException("Bad configuration for redis: unable to parse redis url (" + redactUrl(redisUrl) + ")");
     	    }
     		
     	    host = redisUri.getHost();
