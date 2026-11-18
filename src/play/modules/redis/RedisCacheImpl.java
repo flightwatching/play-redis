@@ -1,5 +1,6 @@
 package play.modules.redis;
 
+import play.Logger;
 import play.Play;
 import play.cache.CacheImpl;
 import redis.clients.jedis.Jedis;
@@ -72,6 +73,7 @@ public class RedisCacheImpl implements CacheImpl {
 		try {
 			return tryAdd(key, value, expiration);
 		} catch (Exception e) {
+			Logger.warn(e, "Redis safeAdd failed for key %s", key);
 			return false;
 		}
 	}
@@ -124,6 +126,7 @@ public class RedisCacheImpl implements CacheImpl {
 			set(key, value, expiration);
 			return true;
 		} catch (Exception e) {
+			Logger.warn(e, "Redis safeSet failed for key %s", key);
 			return false;
 		}
 	}
@@ -141,6 +144,7 @@ public class RedisCacheImpl implements CacheImpl {
 			replace(key, value, expiration);
 			return true;
 		} catch (Exception e) {
+			Logger.warn(e, "Redis safeReplace failed for key %s", key);
 			return false;
 		}
 	}
@@ -256,6 +260,7 @@ public class RedisCacheImpl implements CacheImpl {
 			delete(key);
 			return true;
 		} catch (Exception e) {
+			Logger.warn(e, "Redis safeDelete failed for key %s", key);
 			return false;
 		}
 	}

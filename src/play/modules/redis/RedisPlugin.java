@@ -59,6 +59,19 @@ public class RedisPlugin extends PlayPlugin {
 		return redisUrl.replaceFirst("^([a-zA-Z][a-zA-Z0-9+.-]*://).*@", "$1***@");
 	}
 	
+	// Connections are bound to the invocation thread until invocationFinally, so maxActive caps how many
+	// threads can use Redis at once. Defaults keep commons-pool's (8, wait forever): set redis.pool.maxWait
+	// to fail with an exception instead of freezing every thread when the pool is drained.
+	static JedisPoolConfig poolConfig() {
+		int maxActive = Integer.parseInt(Play.configuration.getProperty("redis.pool.maxActive", "8"));
+		JedisPoolConfig config = new JedisPoolConfig();
+		config.setMaxActive(maxActive);
+		// maxIdle below maxActive would close and re-AUTH connections on every return under load
+		config.setMaxIdle(maxActive);
+		config.setMaxWait(Long.parseLong(Play.configuration.getProperty("redis.pool.maxWait", "-1")));
+		return config;
+	}
+
 	@Override
 	public void onConfigurationRead() {
 		if (isRedisCacheEnabled()) {
@@ -103,7 +116,7 @@ public class RedisPlugin extends PlayPlugin {
                 nb++;
             }
             
-            RedisConnectionManager.shardedConnectionPool = new ShardedJedisPool(new JedisPoolConfig(), shards, ShardedJedis.DEFAULT_KEY_TAG_PATTERN);
+            RedisConnectionManager.shardedConnectionPool = new ShardedJedisPool(poolConfig(), shards, ShardedJedis.DEFAULT_KEY_TAG_PATTERN);
             createdRedis = true;
     	} else {
     		if (!createdRedisCache) Logger.warn("No redis.url found in configuration. Redis will not be available.");
@@ -162,14 +175,14 @@ public class RedisPlugin extends PlayPlugin {
     	
     	JedisPool getConnectionPool() {
     		if (password == null) {
-    			return new JedisPool(new JedisPoolConfig(), host, port, timeout);
+    			return new JedisPool(poolConfig(), host, port, timeout);
     		}
 
-    		return new JedisPool(new JedisPoolConfig(), host, port, timeout, password);
+    		return new JedisPool(poolConfig(), host, port, timeout, password);
     	}
 
     	Pool<Jedis> getAclConnectionPool(String username) {
-    		return new AclJedisPool(new JedisPoolConfig(), host, port, timeout, username, password);
+    		return new AclJedisPool(poolConfig(), host, port, timeout, username, password);
     	}
 
     	JedisShardInfo getShardInfo() {
