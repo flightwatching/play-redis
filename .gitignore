@@ -19,3 +19,6 @@ logs/
 
 # graphify knowledge graph (rebuild with: graphify update .)
 graphify-out/
+
+# pollen state: absolute paths, specific to each machine
+.pollen.json

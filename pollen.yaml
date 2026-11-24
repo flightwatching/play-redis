@@ -1,5 +1,5 @@
 repos:
   - repo: https://github.com/flightwatching/wilco-ai-harness
-    revision: 79e13d455035ca7d1101d6905d8fc392ac7379b6  # v0.1.0
+    revision: 4200f4409446abf83616454595f90965895bf614  # v0.2.1
     paths:
       - path: skills

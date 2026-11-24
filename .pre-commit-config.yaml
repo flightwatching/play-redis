@@ -2,12 +2,13 @@ default_install_hook_types: [pre-commit, commit-msg, pre-push]
 default_stages: [pre-commit]
 repos:
   - repo: https://github.com/flightwatching/wilco-ai-harness
-    rev: v0.1.0
+    rev: v0.2.1
     hooks:
       - id: conventional-commit
       - id: protect-branches
       - id: agents-md
       - id: skills-sync
+      - id: skills-validate
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
