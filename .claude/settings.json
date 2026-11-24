@@ -1,0 +1,11 @@
+{
+  "extraKnownMarketplaces": {
+    "wilco": {
+      "source": { "source": "github", "repo": "flightwatching/wilco-ai-harness", "ref": "v0.1.0" }
+    }
+  },
+  "enabledPlugins": { "wilco-harness@wilco": true },
+  "permissions": {
+    "deny": ["Read(**/.env)", "Read(**/gcr.key)", "Read(**/*.key)", "Read(**/*.pem)"]
+  }
+}

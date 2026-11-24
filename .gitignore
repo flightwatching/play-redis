@@ -15,3 +15,7 @@ tmp/
 out/
 logs/
 *.iml
+.claude/settings.local.json
+
+# graphify knowledge graph (rebuild with: graphify update .)
+graphify-out/
